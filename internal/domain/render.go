@@ -21,18 +21,20 @@ type Artifact struct {
 	Inspection  Inspection `json:"inspection"`
 }
 type Render struct {
-	ID          string            `json:"id"`
-	Key         string            `json:"key"`
-	RequestHash string            `json:"request_hash"`
-	Sheet       Sheet             `json:"sheet"`
-	Recipe      Recipe            `json:"recipe"`
-	Sources     map[string]Source `json:"sources"`
-	Plan        Plan              `json:"plan"`
-	State       string            `json:"state"`
-	Attempts    []Attempt         `json:"attempts"`
-	Artifact    *Artifact         `json:"artifact,omitempty"`
-	CreatedAt   time.Time         `json:"created_at"`
-	UpdatedAt   time.Time         `json:"updated_at"`
+	ID          string             `json:"id"`
+	Key         string             `json:"key"`
+	RequestHash string             `json:"request_hash"`
+	Sheet       Sheet              `json:"sheet"`
+	Recipe      Recipe             `json:"recipe"`
+	Masks       []Mask             `json:"masks"`
+	Sources     map[string]Source  `json:"sources"`
+	Plan        Plan               `json:"plan"`
+	State       string             `json:"state"`
+	Attempts    []Attempt          `json:"attempts"`
+	Artifact    *Artifact          `json:"artifact,omitempty"`
+	Privacy     *PrivacyInspection `json:"privacy,omitempty"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at"`
 }
 type Event struct {
 	Sequence uint64    `json:"sequence"`
@@ -47,12 +49,13 @@ type State struct {
 	Sources  map[string]Source   `json:"sources"`
 	Sheets   map[string][]Sheet  `json:"sheets"`
 	Recipes  map[string][]Recipe `json:"recipes"`
+	Masks    map[string][]Mask   `json:"masks"`
 	Renders  map[string]Render   `json:"renders"`
 	Events   []Event             `json:"events"`
 }
 
 func Empty() State {
-	return State{Schema: 1, Sources: map[string]Source{}, Sheets: map[string][]Sheet{}, Recipes: map[string][]Recipe{}, Renders: map[string]Render{}, Events: []Event{}}
+	return State{Schema: 1, Sources: map[string]Source{}, Sheets: map[string][]Sheet{}, Recipes: map[string][]Recipe{}, Masks: map[string][]Mask{}, Renders: map[string]Render{}, Events: []Event{}}
 }
 func (s *State) Emit(id, kind, detail string) {
 	s.Sequence++

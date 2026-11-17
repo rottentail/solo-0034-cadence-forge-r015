@@ -78,9 +78,29 @@ func ValidateState(s State) error {
 	if s.Schema != 1 || s.Sources == nil || s.Sheets == nil || s.Recipes == nil || s.Renders == nil {
 		return fmt.Errorf("unsupported or incomplete state schema")
 	}
+	if s.Masks == nil {
+		return fmt.Errorf("incomplete state schema: masks map is nil")
+	}
 	for id, source := range s.Sources {
 		if source.ID != id || len(source.Digest) != 64 || source.Bytes <= 0 {
 			return fmt.Errorf("invalid source %s", id)
+		}
+	}
+	for id, versions := range s.Masks {
+		if len(versions) == 0 {
+			return fmt.Errorf("empty mask history")
+		}
+		for i, v := range versions {
+			if v.ID != id || v.Revision != i+1 {
+				return fmt.Errorf("invalid mask history")
+			}
+			source, ok := s.Sources[v.SourceID]
+			if !ok {
+				return fmt.Errorf("mask %s references missing source", id)
+			}
+			if err := ValidateMask(v, source); err != nil {
+				return err
+			}
 		}
 	}
 	for id, versions := range s.Sheets {
@@ -125,6 +145,25 @@ func ValidateState(s State) error {
 		}
 		if r.Sources == nil {
 			return fmt.Errorf("missing render source snapshot")
+		}
+		if len(r.Masks) > 0 {
+			seen := map[string]bool{}
+			for _, m := range r.Masks {
+				if seen[m.ID] {
+					return fmt.Errorf("duplicate frozen mask %s", m.ID)
+				}
+				seen[m.ID] = true
+				source, ok := r.Sources[m.SourceID]
+				if !ok {
+					return fmt.Errorf("frozen mask %s source absent from snapshot", m.ID)
+				}
+				if err := ValidateMask(m, source); err != nil {
+					return err
+				}
+			}
+			if r.State == "succeeded" && (r.Privacy == nil || !r.Privacy.Passed || r.Privacy.FailedFrames != 0) {
+				return fmt.Errorf("succeeded render with masks lacks a passing privacy inspection")
+			}
 		}
 		if err := ValidateSheet(r.Sheet, r.Sources); err != nil {
 			return err

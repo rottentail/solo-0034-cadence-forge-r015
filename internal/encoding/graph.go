@@ -3,16 +3,34 @@ package encoding
 import (
 	"cadenceforge/internal/domain"
 	"cadenceforge/internal/media"
+	"cadenceforge/internal/privacy"
 	"fmt"
 	"strings"
 )
 
 func seconds(ms int64) string { return fmt.Sprintf("%.3f", float64(ms)/1000) }
+
+// Arguments builds the real FFmpeg filter graph. When the render freezes
+// privacy masks, each video segment's drawbox chain is inserted after scaling
+// and frame-rate normalization (so boxes are crisp output-pixel rectangles)
+// and before the pixel format conversion.
 func Arguments(render domain.Render, paths map[string]string, output string) ([]string, error) {
 	r := render.Recipe
 	args := []string{"-nostdin", "-y", "-hide_banner", "-loglevel", "error", "-filter_complex_threads", "1"}
 	filters := []string{}
 	joins := []string{}
+	var coverage *privacy.CoveragePlan
+	if len(render.Masks) > 0 {
+		planner, err := privacy.NewPlanner(render.Masks, render.Sources, r.Width, r.Height, r.FPS)
+		if err != nil {
+			return nil, err
+		}
+		cov, err := privacy.Build(planner, render.Plan)
+		if err != nil {
+			return nil, err
+		}
+		coverage = &cov
+	}
 	for i, p := range render.Plan.Placements {
 		path, ok := paths[p.SourceID]
 		if !ok {
@@ -25,7 +43,14 @@ func Arguments(render domain.Render, paths map[string]string, output string) ([]
 		}
 		filters = append(filters, audio)
 		if r.Format == "mp4" {
-			filters = append(filters, fmt.Sprintf("[%d:v:0]trim=start=%s:end=%s,setpts=PTS-STARTPTS,scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=%d,format=yuv420p[v%d]", i, seconds(p.SourceInMS), seconds(p.SourceOutMS), r.Width, r.Height, r.Width, r.Height, r.FPS, i))
+			chain := fmt.Sprintf("[%d:v:0]trim=start=%s:end=%s,setpts=PTS-STARTPTS,scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=%d", i, seconds(p.SourceInMS), seconds(p.SourceOutMS), r.Width, r.Height, r.Width, r.Height, r.FPS)
+			if coverage != nil {
+				if boxFilters := privacy.DrawboxFilters(*coverage, i); len(boxFilters) > 0 {
+					chain += "," + strings.Join(boxFilters, ",")
+				}
+			}
+			chain += fmt.Sprintf(",format=yuv420p[v%d]", i)
+			filters = append(filters, chain)
 			joins = append(joins, fmt.Sprintf("[v%d][a%d]", i, i))
 		} else {
 			joins = append(joins, fmt.Sprintf("[a%d]", i))

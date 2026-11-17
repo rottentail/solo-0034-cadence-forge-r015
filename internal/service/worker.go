@@ -4,7 +4,9 @@ import (
 	"cadenceforge/internal/domain"
 	"cadenceforge/internal/encoding"
 	"cadenceforge/internal/inspect"
+	"cadenceforge/internal/privacy"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -93,6 +95,22 @@ func (s *Service) claim(cancel context.CancelFunc) (domain.Render, bool, error) 
 	}
 	return out, found && err == nil, err
 }
+
+func (s *Service) coveragePlan(r domain.Render) (*privacy.CoveragePlan, error) {
+	if len(r.Masks) == 0 {
+		return nil, nil
+	}
+	planner, err := privacy.NewPlanner(r.Masks, r.Sources, r.Recipe.Width, r.Recipe.Height, r.Recipe.FPS)
+	if err != nil {
+		return nil, err
+	}
+	cov, err := privacy.Build(planner, r.Plan)
+	if err != nil {
+		return nil, err
+	}
+	return &cov, nil
+}
+
 func (s *Service) execute(ctx context.Context, r domain.Render) {
 	attempt := len(r.Attempts)
 	stage, err := s.Blobs.Staging(r.ID, attempt)
@@ -128,6 +146,43 @@ func (s *Service) execute(ctx context.Context, r domain.Render) {
 		s.complete(r, nil, err)
 		return
 	}
+	// Definitive privacy evidence: the pixel gate runs on the actual encoded
+	// artifact at full delivered resolution. A render that fails coverage is a
+	// failed render with no promoted artifact, never a deliverable.
+	var privacyReport *domain.PrivacyInspection
+	if len(r.Masks) > 0 {
+		cov, perr := s.coveragePlan(r)
+		if perr != nil {
+			s.complete(r, nil, perr)
+			return
+		}
+		gate := privacy.Gate{FFmpeg: s.Config.FFmpeg}
+		report, gerr := gate.Run(ctx, r, *cov, filepath.Join(stage, name), stage)
+		if gerr != nil {
+			s.complete(r, nil, gerr)
+			return
+		}
+		sheet, serr := gate.ContactSheet(ctx, r, report, stage)
+		if serr != nil {
+			s.complete(r, nil, serr)
+			return
+		}
+		report.ContactSheet = sheet
+		if !report.Passed {
+			s.complete(r, nil, fmt.Errorf("privacy gate failed: %d/%d frames expose a covered object", report.FailedFrames, report.TotalFrames))
+			return
+		}
+		coverageBytes, merr := json.MarshalIndent(report, "", "  ")
+		if merr != nil {
+			s.complete(r, nil, merr)
+			return
+		}
+		if werr := os.WriteFile(filepath.Join(stage, "coverage.json"), coverageBytes, 0600); werr != nil {
+			s.complete(r, nil, werr)
+			return
+		}
+		privacyReport = &report
+	}
 	artifact := &domain.Artifact{Filename: name, CaptionFile: "captions.vtt", Inspection: inspection}
 	s.mutation.Lock()
 	defer s.mutation.Unlock()
@@ -141,17 +196,17 @@ func (s *Service) execute(ctx context.Context, r domain.Render) {
 		return
 	}
 	if err = s.Blobs.Promote(stage, r.ID, attempt); err != nil {
-		s.completeLocked(r, nil, err)
+		s.completeLocked(r, nil, nil, err)
 		return
 	}
-	s.completeLocked(r, artifact, nil)
+	s.completeLocked(r, artifact, privacyReport, nil)
 }
 func (s *Service) complete(r domain.Render, a *domain.Artifact, cause error) {
 	s.mutation.Lock()
 	defer s.mutation.Unlock()
-	s.completeLocked(r, a, cause)
+	s.completeLocked(r, a, nil, cause)
 }
-func (s *Service) completeLocked(r domain.Render, a *domain.Artifact, cause error) {
+func (s *Service) completeLocked(r domain.Render, a *domain.Artifact, privacyReport *domain.PrivacyInspection, cause error) {
 	err := s.Store.Update(func(st *domain.State) error {
 		current, ok := st.Renders[r.ID]
 		if !ok || current.State != "running" || len(current.Attempts) != len(r.Attempts) {
@@ -171,6 +226,7 @@ func (s *Service) completeLocked(r domain.Render, a *domain.Artifact, cause erro
 			current.State = "succeeded"
 			last.Outcome = "succeeded"
 			current.Artifact = a
+			current.Privacy = privacyReport
 		}
 		st.Renders[r.ID] = current
 		st.Emit(r.ID, "render."+current.State, last.Detail)

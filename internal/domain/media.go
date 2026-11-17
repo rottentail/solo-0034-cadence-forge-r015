@@ -8,6 +8,7 @@ type Media struct {
 	Audio      bool   `json:"audio"`
 	Width      int    `json:"width"`
 	Height     int    `json:"height"`
+	FPS        int    `json:"fps"`
 	SampleRate int    `json:"sample_rate"`
 	Channels   int    `json:"channels"`
 	VideoCodec string `json:"video_codec"`

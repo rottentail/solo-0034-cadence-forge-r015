@@ -7,10 +7,27 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"time"
 )
 
 type Prober struct{ Binary string }
+
+// frameRate parses an ffprobe rational frame rate ("30000/1001") into the
+// nearest integer fps. Variable or unparseable rates fall back to 0 so callers
+// can decide rather than silently assuming a cadence.
+func frameRate(rational string) int {
+	num, den, found := strings.Cut(rational, "/")
+	if !found {
+		return 0
+	}
+	n, err1 := strconv.ParseFloat(strings.TrimSpace(num), 64)
+	d, err2 := strconv.ParseFloat(strings.TrimSpace(den), 64)
+	if err1 != nil || err2 != nil || d <= 0 || n <= 0 {
+		return 0
+	}
+	return int(math.Round(n / d))
+}
 
 func (p Prober) Probe(ctx context.Context, path string) (domain.Media, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -29,6 +46,7 @@ func (p Prober) Probe(ctx context.Context, path string) (domain.Media, error) {
 			Width       int    `json:"width"`
 			Height      int    `json:"height"`
 			Rate        string `json:"sample_rate"`
+			FrameRate   string `json:"r_frame_rate"`
 			Channels    int    `json:"channels"`
 			Duration    string `json:"duration"`
 			Disposition struct {
@@ -47,6 +65,7 @@ func (p Prober) Probe(ctx context.Context, path string) (domain.Media, error) {
 			m.Width = s.Width
 			m.Height = s.Height
 			m.VideoCodec = s.Codec
+			m.FPS = frameRate(s.FrameRate)
 		}
 		if s.Type == "audio" && !m.Audio {
 			m.Audio = true

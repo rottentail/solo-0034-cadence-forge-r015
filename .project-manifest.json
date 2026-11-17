@@ -48,6 +48,11 @@
       "path": "internal/encoding"
     },
     {
+      "id": "privacy",
+      "name": "随源时间隐私遮挡、逐帧覆盖规划与像素门禁",
+      "path": "internal/privacy"
+    },
+    {
       "id": "inspection",
       "name": "成片契约与完整性核验",
       "path": "internal/inspect"
@@ -424,6 +429,211 @@
         "journal"
       ],
       "verification": "python3 scripts/workflow_check.py --workflow events"
+    },
+    {
+      "id": "mask-version",
+      "name": "mask-version",
+      "entry": "POST/PUT /forge/v1/masks",
+      "success": "独立遮挡修订与ETag",
+      "failure": "过期If-Match返回409、来源身份不可变",
+      "steps": [
+        "遮挡独立于剪辑与配方版本化保存",
+        "历史修订只追加、过期写入不覆盖",
+        "新修订与ETag"
+      ],
+      "module_ids": [
+        "http",
+        "application",
+        "domain",
+        "journal"
+      ],
+      "verification": "python3 scripts/privacy_check.py --workflow mask-version"
+    },
+    {
+      "id": "mask-validate",
+      "name": "mask-validate",
+      "entry": "POST /forge/v1/masks",
+      "success": "密集关键点与不透明标签通过",
+      "failure": "描述性标签、出界盒、缺边界锚点、过大间距拒绝",
+      "steps": [
+        "源像素坐标系与盒边界校验",
+        "标签仅为不透明审查代号",
+        "关键点密度与运动漏盖前置约束"
+      ],
+      "module_ids": [
+        "http",
+        "application",
+        "domain"
+      ],
+      "verification": "python3 scripts/privacy_check.py --workflow mask-validate"
+    },
+    {
+      "id": "mask-cut-edge",
+      "name": "mask-cut-edge",
+      "entry": "POST /forge/v1/renders (masks)",
+      "success": "全区间包含的源片段接受",
+      "failure": "对象只部分覆盖片段切入区间在编码前400",
+      "steps": [
+        "逐源片段包含性检查",
+        "切入切出几帧不得半覆盖",
+        "结构性拒绝先于任何媒体工作"
+      ],
+      "module_ids": [
+        "application",
+        "privacy",
+        "domain"
+      ],
+      "verification": "python3 scripts/privacy_check.py --workflow mask-cut-edge"
+    },
+    {
+      "id": "privacy-render",
+      "name": "privacy-render",
+      "entry": "POST /forge/v1/renders (masks)",
+      "success": "每次源出现的每帧全分辨率像素门禁通过",
+      "failure": "盒内超亮度帧导致渲染失败且无成片",
+      "steps": [
+        "线性插值加运动边距与切入保护生成逐帧盒",
+        "真实FFmpeg drawbox烧录后解码灰度平面逐帧检验",
+        "逐帧几何与亮度证据随渲染冻结"
+      ],
+      "module_ids": [
+        "application",
+        "privacy",
+        "encoding",
+        "inspection",
+        "journal"
+      ],
+      "verification": "python3 scripts/privacy_check.py --workflow privacy-render"
+    },
+    {
+      "id": "privacy-sparse-pin",
+      "name": "privacy-sparse-pin",
+      "entry": "POST /forge/v1/masks",
+      "success": "亚秒级关键点间距接受",
+      "failure": "少关键点固定盒无法覆盖帧间运动被前置拒绝",
+      "steps": [
+        "相邻关键点间距上限约束",
+        "运动漏盖在保存期拦截而非依赖事后像素",
+        "拒绝信息以几何与代号表述"
+      ],
+      "module_ids": [
+        "http",
+        "application",
+        "domain"
+      ],
+      "verification": "python3 scripts/privacy_check.py --workflow privacy-sparse-pin"
+    },
+    {
+      "id": "privacy-pixel-evidence",
+      "name": "privacy-pixel-evidence",
+      "entry": "GET /forge/v1/renders/{id}/artifact 对照",
+      "success": "无遮挡成片暴露目标、遮挡成片盒内全暗的真实逐帧对比",
+      "failure": "任一覆盖盒内出现超阈值亮度即不通过",
+      "steps": [
+        "同一帧序列在有无遮挡下解码亮度平面",
+        "内缩采样规避H.264边界色度渗透",
+        "全交付分辨率证据而非低分辨率代理"
+      ],
+      "module_ids": [
+        "privacy",
+        "inspection",
+        "media"
+      ],
+      "verification": "python3 scripts/privacy_check.py --workflow privacy-pixel-evidence"
+    },
+    {
+      "id": "privacy-freeze",
+      "name": "privacy-freeze",
+      "entry": "POST /renders 与 GET /masks/{id}/audit",
+      "success": "冻结渲染与代理审阅均使用显式修订",
+      "failure": "后续遮挡修改不影响已冻结任务或代理",
+      "steps": [
+        "提交显式选择遮挡修订并快照",
+        "代理审阅必须带显式revision、绝不取最新",
+        "后续修订对冻结与重试不可见"
+      ],
+      "module_ids": [
+        "application",
+        "privacy",
+        "domain",
+        "journal"
+      ],
+      "verification": "python3 scripts/privacy_check.py --workflow privacy-freeze"
+    },
+    {
+      "id": "privacy-retry",
+      "name": "privacy-retry",
+      "entry": "强制终止重启 与 POST /renders/{id}/retry",
+      "success": "中断重试沿用原冻结遮挡并重新通过门禁",
+      "failure": "重试不得采用后来修改的遮挡",
+      "steps": [
+        "SIGKILL后running记为failed/interrupted",
+        "显式重试携带原遮挡快照",
+        "重试产物重新逐帧门禁"
+      ],
+      "module_ids": [
+        "configuration",
+        "application",
+        "privacy",
+        "journal"
+      ],
+      "verification": "python3 scripts/privacy_check.py --workflow privacy-retry"
+    },
+    {
+      "id": "privacy-bundle",
+      "name": "privacy-bundle",
+      "entry": "GET /forge/v1/renders/{id}/bundle 与 /evidence",
+      "success": "媒体、字幕、冻结说明、coverage.json与全分辨率证据共同交付",
+      "failure": "证据缺失或路径越界拒绝",
+      "steps": [
+        "覆盖报告与逐帧PNG进入同一ZIP",
+        "接收方共同确认每次源出现均覆盖",
+        "交付说明只含代号与几何、不含被隐内容描述"
+      ],
+      "module_ids": [
+        "http",
+        "application",
+        "inspection",
+        "journal"
+      ],
+      "verification": "python3 scripts/privacy_check.py --workflow privacy-bundle"
+    },
+    {
+      "id": "mask-lineage",
+      "name": "mask-lineage",
+      "entry": "DELETE /forge/v1/sources/{id}",
+      "success": "无引用素材可退休且对象保守保留",
+      "failure": "遮挡历史引用存在时409",
+      "steps": [
+        "遮挡修订构成素材血缘",
+        "历史遮挡与冻结任务均阻止退休",
+        "字节对象保守保留"
+      ],
+      "module_ids": [
+        "http",
+        "application",
+        "domain",
+        "journal"
+      ],
+      "verification": "python3 scripts/privacy_check.py --workflow mask-lineage"
+    },
+    {
+      "id": "privacy-optional",
+      "name": "privacy-optional",
+      "entry": "POST /forge/v1/renders 无masks",
+      "success": "无遮挡渲染保持基线行为且无隐私字段",
+      "failure": "音频渲染附带遮挡被拒绝",
+      "steps": [
+        "遮挡为可选、仅MP4视频",
+        "无遮挡不触发门禁也不写隐私事实",
+        "基线18条工作流不回归"
+      ],
+      "module_ids": [
+        "application",
+        "privacy",
+        "encoding"
+      ],
+      "verification": "python3 scripts/privacy_check.py --workflow privacy-optional"
     }
   ],
   "complexity": {
@@ -447,7 +657,9 @@
       "recovery_rollback": "internal/journal/recovery.go:Recover",
       "time_semantics": "internal/timeline/plan.go:Build; internal/caption/map.go:Map",
       "idempotency": "internal/service/submit.go:Submit",
-      "snapshot_consistency": "internal/service/submit.go:Submit; internal/journal/store.go:Update"
+      "snapshot_consistency": "internal/service/submit.go:Submit; internal/journal/store.go:Update",
+      "privacy_coverage": "internal/privacy/coverage.go:Build; internal/privacy/gate.go:Run",
+      "privacy_freeze": "internal/service/masks.go:resolveMasks; internal/service/audit.go:AuditMask"
     }
   }
 }

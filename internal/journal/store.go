@@ -39,6 +39,11 @@ func Open(root string) (*Store, error) {
 		err = nil
 	}
 	if err == nil {
+		// Backward compatibility: states written before privacy masking have
+		// no masks map and no frozen mask snapshots.
+		if s.state.Masks == nil {
+			s.state.Masks = map[string][]domain.Mask{}
+		}
 		err = domain.ValidateState(s.state)
 	}
 	if err != nil {

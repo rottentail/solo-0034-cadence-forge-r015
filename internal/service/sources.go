@@ -66,6 +66,13 @@ func (s *Service) RetireSource(id string) error {
 				return domain.Conflict("source is retained by render lineage")
 			}
 		}
+		for _, versions := range st.Masks {
+			for _, m := range versions {
+				if m.SourceID == id {
+					return domain.Conflict("source is referenced by privacy mask history")
+				}
+			}
+		}
 		delete(st.Sources, id)
 		st.Emit(id, "source.retired", "content retained for conservative reclamation")
 		return nil

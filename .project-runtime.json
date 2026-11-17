@@ -101,6 +101,61 @@
       "workflow_id": "events",
       "command": "python3 scripts/workflow_check.py --workflow events",
       "timeout_seconds": 120
+    },
+    {
+      "workflow_id": "mask-version",
+      "command": "python3 scripts/privacy_check.py --workflow mask-version",
+      "timeout_seconds": 180
+    },
+    {
+      "workflow_id": "mask-validate",
+      "command": "python3 scripts/privacy_check.py --workflow mask-validate",
+      "timeout_seconds": 180
+    },
+    {
+      "workflow_id": "mask-cut-edge",
+      "command": "python3 scripts/privacy_check.py --workflow mask-cut-edge",
+      "timeout_seconds": 180
+    },
+    {
+      "workflow_id": "privacy-render",
+      "command": "python3 scripts/privacy_check.py --workflow privacy-render",
+      "timeout_seconds": 180
+    },
+    {
+      "workflow_id": "privacy-sparse-pin",
+      "command": "python3 scripts/privacy_check.py --workflow privacy-sparse-pin",
+      "timeout_seconds": 180
+    },
+    {
+      "workflow_id": "privacy-pixel-evidence",
+      "command": "python3 scripts/privacy_check.py --workflow privacy-pixel-evidence",
+      "timeout_seconds": 180
+    },
+    {
+      "workflow_id": "privacy-freeze",
+      "command": "python3 scripts/privacy_check.py --workflow privacy-freeze",
+      "timeout_seconds": 180
+    },
+    {
+      "workflow_id": "privacy-retry",
+      "command": "python3 scripts/privacy_check.py --workflow privacy-retry",
+      "timeout_seconds": 180
+    },
+    {
+      "workflow_id": "privacy-bundle",
+      "command": "python3 scripts/privacy_check.py --workflow privacy-bundle",
+      "timeout_seconds": 180
+    },
+    {
+      "workflow_id": "mask-lineage",
+      "command": "python3 scripts/privacy_check.py --workflow mask-lineage",
+      "timeout_seconds": 180
+    },
+    {
+      "workflow_id": "privacy-optional",
+      "command": "python3 scripts/privacy_check.py --workflow privacy-optional",
+      "timeout_seconds": 180
     }
   ]
 }
